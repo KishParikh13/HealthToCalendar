@@ -6,5 +6,11 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>This app needs access to your health data to sync it with your calendar.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>This app needs permission to update your health data.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>This app needs access to your calendar to sync your health data.</string>
 </dict>
 </plist>
