@@ -11,6 +11,7 @@ import EventKit
 import FoundationModels
 
 struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var healthKitManager = HealthKitManager()
     @StateObject private var calendarManager = CalendarManager()
     @State private var selectedCategory: HealthKitManager.HealthCategory?
@@ -87,8 +88,13 @@ struct ContentView: View {
         return "\(formatter.string(from: currentStartDate)) - \(formatter.string(from: endDisplayDate)), \(year)"
     }
 
+    private var gridColumns: [GridItem] {
+        let columnCount = horizontalSizeClass == .regular ? 4 : 2
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: columnCount)
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if !healthKitManager.isAuthorized {
                     VStack(spacing: 20) {
@@ -360,11 +366,8 @@ struct ContentView: View {
                                 }
                             }
 
-                            // 2-Column Grid Layout
-                            LazyVGrid(columns: [
-                                GridItem(.flexible(), spacing: 12),
-                                GridItem(.flexible(), spacing: 12)
-                            ], spacing: 12) {
+                            // Responsive Grid Layout
+                            LazyVGrid(columns: gridColumns, spacing: 12) {
                                 ForEach(filteredHealthCategories()) { category in
                                     HealthCategoryCard(
                                         category: category,
@@ -947,7 +950,7 @@ struct SyncDateRangeView: View {
     @State private var groupedEvents: [(date: Date, events: [CalendarEventPreview])] = []
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
