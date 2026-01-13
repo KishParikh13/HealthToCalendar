@@ -28,6 +28,17 @@ struct SyncHistory: Codable, Identifiable {
     }
 }
 
+struct CalendarEventPreview: Identifiable {
+    let id = UUID()
+    let title: String
+    let startDate: Date
+    let endDate: Date
+    let isAllDay: Bool
+    let details: String
+    let emoji: String
+    let categoryName: String
+}
+
 class CalendarManager: ObservableObject {
     let eventStore = EKEventStore()
     private let healthSyncMarker = "[HealthToCalendar-Synced]"
@@ -69,6 +80,50 @@ class CalendarManager: ObservableObject {
             calendar.isDate(history.startDate, inSameDayAs: startDate) &&
             calendar.isDate(history.endDate, inSameDayAs: endDate)
         }
+    }
+
+    func getSyncedDays() -> Set<Date> {
+        let calendar = Calendar.current
+        var syncedDays = Set<Date>()
+
+        for history in syncHistory {
+            var currentDate = calendar.startOfDay(for: history.startDate)
+            let endDate = calendar.startOfDay(for: history.endDate)
+
+            while currentDate <= endDate {
+                syncedDays.insert(currentDate)
+                currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate)!
+            }
+        }
+
+        return syncedDays
+    }
+
+    func fetchPreviewEvents(healthManager: HealthKitManager, from startDate: Date, to endDate: Date) async -> [CalendarEventPreview] {
+        var previewEvents: [CalendarEventPreview] = []
+
+        // Add 1 day to endDate to make it inclusive (HealthKit queries use exclusive end dates)
+        let calendar = Calendar.current
+        let adjustedEndDate = calendar.date(byAdding: .day, value: 1, to: endDate) ?? endDate
+
+        for category in healthManager.healthCategories {
+            let samples = await healthManager.fetchDetailedSampleData(for: category, from: startDate, to: adjustedEndDate)
+
+            for sample in samples {
+                let preview = CalendarEventPreview(
+                    title: "\(category.emoji) \(category.name)",
+                    startDate: sample.startDate,
+                    endDate: sample.endDate,
+                    isAllDay: sample.isAllDay,
+                    details: sample.details,
+                    emoji: category.emoji,
+                    categoryName: category.name
+                )
+                previewEvents.append(preview)
+            }
+        }
+
+        return previewEvents.sorted { $0.startDate > $1.startDate }
     }
 
     func requestCalendarAccess() async {
@@ -113,8 +168,12 @@ class CalendarManager: ObservableObject {
         var eventsFailed = 0
         var createdEventIDs: [String] = []
 
+        // Add 1 day to endDate to make it inclusive (HealthKit queries use exclusive end dates)
+        let calendar = Calendar.current
+        let adjustedEndDate = calendar.date(byAdding: .day, value: 1, to: endDate) ?? endDate
+
         for category in healthManager.healthCategories {
-            let samples = await healthManager.fetchDetailedSampleData(for: category, from: startDate, to: endDate)
+            let samples = await healthManager.fetchDetailedSampleData(for: category, from: startDate, to: adjustedEndDate)
 
             for sample in samples {
                 do {
@@ -146,11 +205,11 @@ class CalendarManager: ObservableObject {
     func createCalendarEvent(for sample: HealthSample, category: HealthKitManager.HealthCategory) async throws -> String {
         let event = EKEvent(eventStore: eventStore)
 
-        event.title = "\(category.emoji) \(category.name)"
+        event.title = "\(category.emoji) \(sample.details)"
         event.startDate = sample.startDate
         event.endDate = sample.endDate
         event.isAllDay = sample.isAllDay
-        event.notes = "\(sample.details)\n\n\(healthSyncMarker)"
+        event.notes = healthSyncMarker
         event.calendar = selectedCalendar ?? eventStore.defaultCalendarForNewEvents
 
         try eventStore.save(event, span: .thisEvent)
