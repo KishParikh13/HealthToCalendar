@@ -685,7 +685,7 @@ class HealthKitManager: ObservableObject {
                 formattedAverage: "",
                 unitName: samples.count == 1 ? "workout" : "workouts"
             )
-            periodStatsCache[cacheKey] = stats
+            await MainActor.run { self.periodStatsCache[cacheKey] = stats }
             return stats
         }
 
@@ -716,7 +716,7 @@ class HealthKitManager: ObservableObject {
                 formattedAverage: avgHours > 0 ? "\(avgHours)h \(avgMins)m" : "\(avgMins)m",
                 unitName: "total"
             )
-            periodStatsCache[cacheKey] = stats
+            await MainActor.run { self.periodStatsCache[cacheKey] = stats }
             return stats
         }
 
@@ -796,8 +796,10 @@ class HealthKitManager: ObservableObject {
                     unitName: unitName
                 )
 
-                self.periodStatsCache[cacheKey] = stats
-                continuation.resume(returning: stats)
+                Task {
+                    await MainActor.run { self.periodStatsCache[cacheKey] = stats }
+                    continuation.resume(returning: stats)
+                }
             }
 
             self.healthStore.execute(query)
@@ -828,7 +830,7 @@ class HealthKitManager: ObservableObject {
                 // Group by day
                 chartData = createDailyChartData(from: samples, from: startDate, to: endDate, calendar: calendar)
             }
-            chartDataCache[cacheKey] = chartData
+            await MainActor.run { self.chartDataCache[cacheKey] = chartData }
             return chartData
         }
 
@@ -841,7 +843,7 @@ class HealthKitManager: ObservableObject {
             } else {
                 chartData = createDailyChartDataFromDurations(from: samples, from: startDate, to: endDate, calendar: calendar)
             }
-            chartDataCache[cacheKey] = chartData
+            await MainActor.run { self.chartDataCache[cacheKey] = chartData }
             return chartData
         }
 
@@ -943,9 +945,11 @@ class HealthKitManager: ObservableObject {
                         currentDate = nextDay
                     }
                 }
-
-                self.chartDataCache[cacheKey] = chartData
-                continuation.resume(returning: chartData)
+                let result = chartData
+                Task { @MainActor in
+                    self.chartDataCache[cacheKey] = result
+                }
+                continuation.resume(returning: result)
             }
 
             self.healthStore.execute(query)
@@ -1156,3 +1160,4 @@ extension HKWorkoutActivityType {
         }
     }
 }
+
