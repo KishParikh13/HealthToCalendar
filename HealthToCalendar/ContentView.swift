@@ -99,8 +99,9 @@ struct ContentView: View {
                 if !healthKitManager.isAuthorized {
                     VStack(spacing: 20) {
                         Image(systemName: "heart.text.square.fill")
-                            .font(.system(size: 60))
+                            .font(.largeTitle)
                             .foregroundColor(.red)
+                            .accessibilityHidden(true)
 
                         Text("Health Data Access")
                             .font(.title)
@@ -115,6 +116,7 @@ struct ContentView: View {
                                 .foregroundColor(.red)
                                 .multilineTextAlignment(.center)
                                 .padding()
+                                .accessibilityLabel("Error: \(error)")
                         }
 
                         Button {
@@ -129,6 +131,9 @@ struct ContentView: View {
                                 .background(Color.blue)
                                 .cornerRadius(10)
                         }
+                        .accessibilityLabel("Authorize Health Data Access")
+                        .accessibilityHint("Opens system dialog to grant access to your health data")
+                        .accessibilityIdentifier("authorizeHealthButton")
                     }
                     .padding()
                 } else {
@@ -168,10 +173,14 @@ struct ContentView: View {
                                             .foregroundColor(.secondary)
                                     }
                                 }
+                                .accessibilityLabel("Time range: \(selectedTimeRange.displayName)")
+                                .accessibilityHint("Double tap to change time range")
+                                .accessibilityIdentifier("timeRangeMenu")
 
                                 Text(dateRangeDisplayString)
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .accessibilityLabel("Showing data from \(dateRangeDisplayString)")
 
                                 Spacer()
 
@@ -183,15 +192,21 @@ struct ContentView: View {
                                             .font(.body)
                                             .foregroundColor(.primary)
                                     }
+                                    .accessibilityLabel("Previous \(selectedTimeRange.displayName.lowercased())")
+                                    .accessibilityHint("View earlier time period")
+                                    .accessibilityIdentifier("previousPeriodButton")
 
                                     Button {
                                         timeRangeOffset += 1
                                     } label: {
                                         Image(systemName: "chevron.right")
                                             .font(.body)
-                                            .foregroundColor(canGoForward ? .primary : .secondary.opacity(0.5))
+                                            .foregroundColor(canGoForward ? .primary : .secondary)
                                     }
                                     .disabled(!canGoForward)
+                                    .accessibilityLabel("Next \(selectedTimeRange.displayName.lowercased())")
+                                    .accessibilityHint(canGoForward ? "View later time period" : "Already showing most recent period")
+                                    .accessibilityIdentifier("nextPeriodButton")
                                 }
                             }
                             .padding(.horizontal)
@@ -218,9 +233,11 @@ struct ContentView: View {
                                         HStack {
                                             Image(systemName: "sparkles")
                                                 .foregroundColor(.purple)
+                                                .accessibilityHidden(true)
                                             Text("\(selectedTimeRange.displayName) Summary")
                                                 .font(.headline)
                                                 .foregroundColor(.secondary)
+                                                .accessibilityAddTraits(.isHeader)
 
                                             Spacer()
 
@@ -239,6 +256,9 @@ struct ContentView: View {
                                                 }
                                                 .buttonStyle(.bordered)
                                                 .disabled(isGeneratingAI)
+                                                .accessibilityLabel(isGeneratingAI ? "Generating summary" : "Regenerate summary")
+                                                .accessibilityHint("Generate a new AI summary of your health data")
+                                                .accessibilityIdentifier("regeneratePeriodSummaryButton")
                                             }
                                         }
 
@@ -250,10 +270,13 @@ struct ContentView: View {
                                                     .font(.subheadline)
                                                     .foregroundColor(.secondary)
                                             }
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityLabel("Generating AI summary, please wait")
                                         } else if let summary = aiSummary {
                                             Text(summary)
                                                 .font(.subheadline)
                                                 .foregroundColor(.primary)
+                                                .accessibilityLabel("AI Summary: \(summary)")
                                         } else if daysWithData.isEmpty {
                                             Text("No health data in this period")
                                                 .font(.subheadline)
@@ -284,10 +307,12 @@ struct ContentView: View {
                                                 Label("Synced", systemImage: "checkmark.circle.fill")
                                                     .font(.caption)
                                                     .foregroundColor(.green)
+                                                    .accessibilityLabel("Sync status: Synced to calendar")
                                             } else {
                                                 Label("Unsynced", systemImage: "circle.dashed")
                                                     .font(.caption)
                                                     .foregroundColor(.orange)
+                                                    .accessibilityLabel("Sync status: Not yet synced to calendar")
                                             }
                                         }
 
@@ -299,6 +324,9 @@ struct ContentView: View {
                                             Image(systemName: "xmark.circle.fill")
                                                 .foregroundColor(.secondary)
                                         }
+                                        .accessibilityLabel("Close date details")
+                                        .accessibilityHint("Return to period summary view")
+                                        .accessibilityIdentifier("closeDateDetailsButton")
                                     }
                                     .padding()
                                     .background(Color(.secondarySystemBackground))
@@ -310,9 +338,11 @@ struct ContentView: View {
                                         HStack {
                                             Image(systemName: "sparkles")
                                                 .foregroundColor(.purple)
+                                                .accessibilityHidden(true)
                                             Text("Daily Summary")
                                                 .font(.headline)
                                                 .foregroundColor(.secondary)
+                                                .accessibilityAddTraits(.isHeader)
 
                                             Spacer()
 
@@ -331,6 +361,9 @@ struct ContentView: View {
                                                 }
                                                 .buttonStyle(.bordered)
                                                 .disabled(isGeneratingAI)
+                                                .accessibilityLabel(isGeneratingAI ? "Generating summary" : "Regenerate summary")
+                                                .accessibilityHint("Generate a new AI summary for this day")
+                                                .accessibilityIdentifier("regenerateDailySummaryButton")
                                             }
                                         }
 
@@ -342,10 +375,13 @@ struct ContentView: View {
                                                     .font(.subheadline)
                                                     .foregroundColor(.secondary)
                                             }
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityLabel("Generating AI summary, please wait")
                                         } else if let summary = aiSummary {
                                             Text(summary)
                                                 .font(.subheadline)
                                                 .foregroundColor(.primary)
+                                                .accessibilityLabel("AI Summary: \(summary)")
                                         } else if filteredHealthCategories().isEmpty {
                                             Text("No health data to summarize")
                                                 .font(.subheadline)
@@ -396,14 +432,17 @@ struct ContentView: View {
                             } else if selectedDate != nil && filteredHealthCategories().isEmpty && !isLoadingDailyData {
                                 VStack(spacing: 12) {
                                     Image(systemName: "chart.xyaxis.line")
-                                        .font(.system(size: 40))
+                                        .font(.largeTitle)
                                         .foregroundColor(.secondary)
+                                        .accessibilityHidden(true)
                                     Text("No health data for this day")
                                         .font(.headline)
                                         .foregroundColor(.secondary)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 40)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("No health data recorded for this day")
                             }
 
                             // Action Buttons (below category cards)
@@ -416,6 +455,9 @@ struct ContentView: View {
                                             .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.bordered)
+                                    .accessibilityLabel("Share health data for \(formattedSelectedDate(selectedDate))")
+                                    .accessibilityHint("Opens share sheet to export your health data")
+                                    .accessibilityIdentifier("shareHealthDataButton")
 
                                     Button {
                                         if let url = URL(string: "x-apple-health://") {
@@ -426,6 +468,9 @@ struct ContentView: View {
                                             .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.bordered)
+                                    .accessibilityLabel("Open Apple Health app")
+                                    .accessibilityHint("View detailed health data in the Health app")
+                                    .accessibilityIdentifier("openHealthAppButton")
                                 }
                                 .padding(.horizontal)
                                 .padding(.bottom, 20)
@@ -455,6 +500,9 @@ struct ContentView: View {
                                 .disabled(calendarManager.isSyncing)
                                 .padding(.horizontal)
                                 .padding(.bottom, 8)
+                                .accessibilityLabel("Sync \(unsyncedCount) day\(unsyncedCount == 1 ? "" : "s") to calendar")
+                                .accessibilityHint("Add health data events to your calendar")
+                                .accessibilityIdentifier("syncToCalendarButton")
                             }
                         }
                     }
@@ -467,6 +515,9 @@ struct ContentView: View {
                                 } label: {
                                     Text("Today")
                                 }
+                                .accessibilityLabel("Jump to today")
+                                .accessibilityHint("Return to current time period")
+                                .accessibilityIdentifier("todayButton")
                             }
                         }
                     }
@@ -954,9 +1005,12 @@ struct SyncDateRangeView: View {
             Form {
                 Section {
                     DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                        .accessibilityIdentifier("syncStartDatePicker")
                     DatePicker("End Date", selection: $endDate, in: startDate...Date(), displayedComponents: .date)
+                        .accessibilityIdentifier("syncEndDatePicker")
                 } header: {
                     Text("Select Date Range")
+                        .accessibilityAddTraits(.isHeader)
                 } footer: {
                     Text("Choose the date range for health data to sync to your calendar.")
                 }
@@ -969,13 +1023,17 @@ struct SyncDateRangeView: View {
                                     Circle()
                                         .fill(Color(cgColor: calendar.cgColor))
                                         .frame(width: 12, height: 12)
+                                        .accessibilityHidden(true)
                                     Text(calendar.title)
                                 }
                                 .tag(calendar as EKCalendar?)
                             }
                         }
+                        .accessibilityIdentifier("calendarPicker")
+                        .accessibilityHint("Choose which calendar to add events to")
                     } header: {
                         Text("Destination Calendar")
+                            .accessibilityAddTraits(.isHeader)
                     } footer: {
                         Text("Choose which calendar to add health events to.")
                     }
@@ -997,6 +1055,8 @@ struct SyncDateRangeView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Already synced. This date range was synced on \(formattedDate(existingSync.syncedAt)). \(existingSync.eventCount) events created.")
                     }
                 }
 
@@ -1017,8 +1077,9 @@ struct SyncDateRangeView: View {
                     } else if previewEvents.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "calendar.badge.exclamationmark")
-                                .font(.system(size: 40))
+                                .font(.largeTitle)
                                 .foregroundColor(.orange)
+                                .accessibilityHidden(true)
                             Text("No health data in this date range")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
@@ -1026,6 +1087,8 @@ struct SyncDateRangeView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding()
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("No health data available in the selected date range")
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("\(previewEvents.count) events will be added")
@@ -1094,6 +1157,7 @@ struct SyncDateRangeView: View {
                             Spacer()
                             if calendarManager.isSyncing {
                                 ProgressView()
+                                    .accessibilityLabel("Syncing in progress")
                             } else {
                                 Text("Add to Calendar")
                                     .font(.headline)
@@ -1102,6 +1166,9 @@ struct SyncDateRangeView: View {
                         }
                     }
                     .disabled(calendarManager.isSyncing || calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil || previewEvents.isEmpty)
+                    .accessibilityLabel(syncButtonAccessibilityLabel)
+                    .accessibilityHint("Adds health events to your selected calendar")
+                    .accessibilityIdentifier("addToCalendarButton")
                 }
             }
             .navigationTitle("Sync Health Data")
@@ -1111,6 +1178,8 @@ struct SyncDateRangeView: View {
                     Button("Cancel") {
                         showingSyncSheet = false
                     }
+                    .accessibilityLabel("Cancel sync")
+                    .accessibilityIdentifier("cancelSyncButton")
                 }
             }
             .task(id: "\(startDate)-\(endDate)") {
@@ -1157,6 +1226,18 @@ struct SyncDateRangeView: View {
             return "Yesterday"
         } else {
             return formatter.string(from: date)
+        }
+    }
+
+    private var syncButtonAccessibilityLabel: String {
+        if calendarManager.isSyncing {
+            return "Syncing health data to calendar"
+        } else if calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil {
+            return "Already synced, button disabled"
+        } else if previewEvents.isEmpty {
+            return "No events to sync, button disabled"
+        } else {
+            return "Add \(previewEvents.count) events to calendar"
         }
     }
 }

@@ -50,23 +50,28 @@ struct MonthlyCalendarView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
+            .accessibilityHidden(true)
 
             // Calendar grid - 2 weeks
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
                 ForEach(calendarDays, id: \.self) { date in
                     let normalizedDate = normalizeDate(date)
                     let isFutureDate = normalizedDate > calendar.startOfDay(for: Date())
+                    let isSynced = syncedDays.contains(normalizedDate)
+                    let hasData = daysWithData.contains(normalizedDate)
+                    let isCurrentlySelected = selectedDate != nil && calendar.isDate(date, inSameDayAs: selectedDate!)
+
                     DayCell(
                         date: date,
-                        isSynced: syncedDays.contains(normalizedDate),
-                        hasData: daysWithData.contains(normalizedDate),
+                        isSynced: isSynced,
+                        hasData: hasData,
                         isToday: calendar.isDateInToday(date),
-                        isSelected: selectedDate != nil && calendar.isDate(date, inSameDayAs: selectedDate!),
+                        isSelected: isCurrentlySelected,
                         isFuture: isFutureDate
                     )
                     .onTapGesture {
                         // Don't allow selection of future dates or dates without data
-                        if !isFutureDate && daysWithData.contains(normalizedDate) {
+                        if !isFutureDate && hasData {
                             // Toggle selection: if already selected, deselect it
                             if let currentSelection = selectedDate,
                                calendar.isDate(currentSelection, inSameDayAs: normalizedDate) {
@@ -76,9 +81,65 @@ struct MonthlyCalendarView: View {
                             }
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(dayCellAccessibilityLabel(for: normalizedDate, isFuture: isFutureDate, isSynced: isSynced, hasData: hasData, isToday: calendar.isDateInToday(date), isSelected: isCurrentlySelected))
+                    .accessibilityHint(dayCellAccessibilityHint(for: normalizedDate, isFuture: isFutureDate, hasData: hasData))
+                    .accessibilityAddTraits(dayCellAccessibilityTraits(isFuture: isFutureDate, hasData: hasData, isSelected: isCurrentlySelected))
+                    .accessibilityIdentifier("dayCell_\(dateIdentifier(normalizedDate))")
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Calendar showing \(calendarDays.count) days")
         }
+    }
+
+    private func dayCellAccessibilityLabel(for date: Date, isFuture: Bool, isSynced: Bool, hasData: Bool, isToday: Bool, isSelected: Bool) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .full
+        let dateString = formatter.string(from: date)
+
+        var status = ""
+        if isFuture {
+            status = "Future date"
+        } else if isSynced {
+            status = "Synced"
+        } else if hasData {
+            status = "Has data, not synced"
+        } else {
+            status = "No data"
+        }
+
+        let todayString = isToday ? ", Today" : ""
+        let selectedString = isSelected ? ", Selected" : ""
+
+        return "\(dateString)\(todayString)\(selectedString). \(status)"
+    }
+
+    private func dayCellAccessibilityHint(for date: Date, isFuture: Bool, hasData: Bool) -> String {
+        if isFuture {
+            return "Future date, not selectable"
+        } else if hasData {
+            return "Double tap to view health data for this day"
+        } else {
+            return "No health data recorded"
+        }
+    }
+
+    private func dayCellAccessibilityTraits(isFuture: Bool, hasData: Bool, isSelected: Bool) -> AccessibilityTraits {
+        var traits: AccessibilityTraits = []
+        if !isFuture && hasData {
+            traits.insert(.isButton)
+        }
+        if isSelected {
+            traits.insert(.isSelected)
+        }
+        return traits
+    }
+
+    private func dateIdentifier(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 
     private var dateRangeString: String {
@@ -198,18 +259,36 @@ struct DayCell: View {
                     .frame(width: 36, height: 36)
             }
 
-            // Circle frame - always present for consistent layout
-            Circle()
-                .strokeBorder(circleColor, lineWidth: isSelected ? 2.5 : 2)
-                .frame(width: 28, height: 28)
+            // Circle frame with sync status indicator
+            ZStack {
+                Circle()
+                    .strokeBorder(circleColor, lineWidth: isSelected ? 2.5 : 2)
+                    .frame(width: 28, height: 28)
+
+                // Differentiate Without Color: Add icon indicators for sync status
+                if !isSelected && syncState == .synced {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.green)
+                        .offset(x: 12, y: -12)
+                }
+
+                if !isSelected && syncState == .notSynced {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                        .offset(x: 12, y: -12)
+                }
+            }
 
             Text("\(calendar.component(.day, from: date))")
-                .font(.system(size: 14, weight: isToday ? .bold : .regular))
+                .font(.subheadline)
+                .fontWeight(isToday ? .bold : .regular)
                 .foregroundColor(isSelected ? .white : .primary)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 40)
-        .opacity(isFuture || !hasData ? 0.4 : 1.0)
+        .opacity(isFuture || !hasData ? 0.5 : 1.0)
     }
 
     private var circleColor: Color {

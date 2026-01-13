@@ -15,6 +15,19 @@ struct HealthCategoryCard: View {
     var isDisabled: Bool = false
     let onTap: () -> Void
 
+    private var accessibilityLabelText: String {
+        if category.isLoading {
+            return "\(category.name), loading"
+        } else if let stats = monthlyStats {
+            let value = category.shouldAggregateDaily ? stats.formattedTotal : stats.formattedAverage
+            return "\(category.name), \(value) \(stats.unitName)"
+        } else if !category.sampleData.isEmpty {
+            return "\(category.name), data available"
+        } else {
+            return "\(category.name), no data"
+        }
+    }
+
     var body: some View {
         Button(action: {
             if !isDisabled {
@@ -24,7 +37,8 @@ struct HealthCategoryCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(category.emoji)
-                        .font(.system(size: 20))
+                        .font(.title3)
+                        .accessibilityHidden(true)
                     Text(category.name)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -62,10 +76,15 @@ struct HealthCategoryCard: View {
             .background(Color(.secondarySystemBackground))
             .cornerRadius(12)
             .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
-            .opacity(isDisabled ? 0.5 : 1.0)
+            .opacity(isDisabled ? 0.6 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(isDisabled)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint(isDisabled ? "No data available" : "Double tap to view details")
+        .accessibilityIdentifier("healthCategory_\(category.name)")
+        .accessibilityAddTraits(isDisabled ? [] : .isButton)
     }
 }
 
@@ -180,19 +199,30 @@ struct SampleBarChart: View {
         return maxValue * 1.1
     }
 
+    private var chartAccessibilityLabel: String {
+        let total = authoritativeTotal ?? formatValue(chartData.reduce(0) { $0 + $1.value })
+        let peak = formatValue(chartData.map { $0.value }.max() ?? 0)
+        let activeCount = chartData.filter { $0.value > 0 }.count
+        let periodType = isHourly ? "hours" : "days"
+        return "Bar chart showing \(unitName). Total: \(total). Peak: \(peak). Active \(periodType): \(activeCount)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if chartData.isEmpty || chartData.allSatisfy({ $0.value == 0 }) {
                 VStack(spacing: 8) {
                     Image(systemName: "chart.bar")
-                        .font(.system(size: 40))
+                        .font(.largeTitle)
                         .foregroundColor(.secondary)
+                        .accessibilityHidden(true)
                     Text("No data in this period")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 200)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Chart: No data available for this period")
             } else {
                 // Selection info displayed above chart
                 HStack {
@@ -247,6 +277,8 @@ struct SampleBarChart: View {
                     }
                 }
                 .frame(height: 200)
+                .accessibilityLabel(chartAccessibilityLabel)
+                .accessibilityHint("Interactive chart. Swipe to explore data points")
 
                 // Summary stats - use authoritative total if provided
                 let computedTotal = chartData.reduce(0) { $0 + $1.value }
@@ -261,6 +293,8 @@ struct SampleBarChart: View {
                         Text(authoritativeTotal ?? formatValue(computedTotal))
                             .font(.headline)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Total: \(authoritativeTotal ?? formatValue(computedTotal)) \(unitName)")
 
                     VStack(alignment: .leading) {
                         Text("Peak")
@@ -269,6 +303,8 @@ struct SampleBarChart: View {
                         Text(formatValue(maxValue))
                             .font(.headline)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Peak: \(formatValue(maxValue)) \(unitName)")
 
                     VStack(alignment: .leading) {
                         Text(isHourly ? "Active Hours" : "Active Days")
@@ -277,6 +313,8 @@ struct SampleBarChart: View {
                         Text("\(nonZeroCount)")
                             .font(.headline)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(isHourly ? "Active hours" : "Active days"): \(nonZeroCount)")
 
                     Spacer()
                 }
@@ -358,7 +396,8 @@ struct HealthCategoryDetailSheet: View {
                     // Header with icon
                     HStack {
                         Text(category.emoji)
-                            .font(.system(size: 60))
+                            .font(.largeTitle)
+                            .accessibilityHidden(true)
 
                         Spacer()
 
@@ -372,17 +411,21 @@ struct HealthCategoryDetailSheet: View {
                         }
                     }
                     .padding(.bottom, 8)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(category.name) details for \(dateRangeDescription), showing \(isDaily ? "24 hour" : "14 day") view")
 
                     // Bar Chart
                     VStack(alignment: .leading, spacing: 8) {
                         Text(isDaily ? "Activity by Hour" : "Activity by Day")
                             .font(.headline)
                             .foregroundColor(.secondary)
+                            .accessibilityAddTraits(.isHeader)
 
                         if isLoadingChart {
                             HStack {
                                 Spacer()
                                 ProgressView()
+                                    .accessibilityLabel("Loading chart data")
                                 Spacer()
                             }
                             .frame(height: 200)
@@ -408,6 +451,8 @@ struct HealthCategoryDetailSheet: View {
                     Button("Done") {
                         dismiss()
                     }
+                    .accessibilityLabel("Close \(category.name) details")
+                    .accessibilityIdentifier("doneButton_\(category.name)")
                 }
             }
             .task {
