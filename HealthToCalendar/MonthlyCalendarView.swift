@@ -259,27 +259,10 @@ struct DayCell: View {
                     .frame(width: 36, height: 36)
             }
 
-            // Circle frame with sync status indicator
-            ZStack {
-                Circle()
-                    .strokeBorder(circleColor, lineWidth: isSelected ? 2.5 : 2)
-                    .frame(width: 28, height: 28)
-
-                // Differentiate Without Color: Add icon indicators for sync status
-                if !isSelected && syncState == .synced {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.green)
-                        .offset(x: 12, y: -12)
-                }
-
-                if !isSelected && syncState == .notSynced {
-                    Circle()
-                        .fill(Color.orange)
-                        .frame(width: 6, height: 6)
-                        .offset(x: 12, y: -12)
-                }
-            }
+            // Circle frame
+            Circle()
+                .strokeBorder(circleColor, lineWidth: isSelected ? 2.5 : 2)
+                .frame(width: 28, height: 28)
 
             Text("\(calendar.component(.day, from: date))")
                 .font(.subheadline)

@@ -1064,6 +1064,8 @@ struct TopMetric {
     let value: String
 }
 
+// MARK: - Sync Date Range View
+
 struct SyncDateRangeView: View {
     @Binding var startDate: Date
     @Binding var endDate: Date
@@ -1077,8 +1079,10 @@ struct SyncDateRangeView: View {
     @State private var groupedEvents: [(date: Date, events: [CalendarEventPreview])] = []
     @State private var enabledCategories: Set<String> = []
     @State private var showCategoryPicker = false
+    @State private var selectedPreviewDay: Date? = nil
 
     private let enabledCategoriesKey = "enabledSyncCategories"
+    private let calendar = Calendar.current
 
     var body: some View {
         NavigationStack {
@@ -1218,44 +1222,94 @@ struct SyncDateRangeView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(previewEvents.isEmpty ? "No health data available in the selected date range" : "No categories selected for sync")
                     } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(filteredPreviewEvents.count) events will be added")
-                                .font(.headline)
-
-                            ForEach(filteredGroupedEvents.prefix(3), id: \.date) { group in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(sectionHeaderString(for: group.date))
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Summary header
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(filteredPreviewEvents.count) events")
+                                        .font(.headline)
+                                    Text("across \(daysWithFilteredEvents.count) days")
                                         .font(.subheadline)
-                                        .fontWeight(.semibold)
                                         .foregroundColor(.secondary)
-
-                                    ForEach(group.events.prefix(3)) { event in
-                                        HStack(spacing: 8) {
-                                            Text(event.emoji)
-                                            Text(event.categoryName)
-                                                .font(.subheadline)
-                                            Spacer()
-                                            Text(event.details)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                        .padding(.leading, 8)
-                                    }
-
-                                    if group.events.count > 3 {
-                                        Text("+ \(group.events.count - 3) more")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .padding(.leading, 8)
-                                    }
                                 }
+                                Spacer()
                             }
 
-                            if filteredGroupedEvents.count > 3 {
-                                Text("+ \(filteredGroupedEvents.count - 3) more days")
-                                    .font(.caption)
+                            Divider()
+
+                            // Day navigator
+                            HStack {
+                                Button {
+                                    withAnimation(.none) {
+                                        navigateToPreviousDay()
+                                    }
+                                } label: {
+                                    Image(systemName: "chevron.left")
+                                        .font(.body.weight(.semibold))
+                                        .foregroundColor(canNavigatePrevious ? .blue : .secondary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canNavigatePrevious)
+                                .accessibilityLabel("Previous day")
+
+                                Spacer()
+
+                                VStack(spacing: 2) {
+                                    Text(dayHeaderString(for: selectedPreviewDay ?? endDate))
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    if selectedPreviewDay != nil {
+                                        Text("\(eventsForSelectedDay.count) event\(eventsForSelectedDay.count == 1 ? "" : "s")")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Button {
+                                    withAnimation(.none) {
+                                        navigateToNextDay()
+                                    }
+                                } label: {
+                                    Image(systemName: "chevron.right")
+                                        .font(.body.weight(.semibold))
+                                        .foregroundColor(canNavigateNext ? .blue : .secondary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!canNavigateNext)
+                                .accessibilityLabel("Next day")
+                            }
+
+                            // Events for selected day
+                            if eventsForSelectedDay.isEmpty {
+                                Text("No events for this day")
+                                    .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            } else {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(eventsForSelectedDay) { event in
+                                        HStack(spacing: 8) {
+                                            Text(event.emoji)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(event.categoryName)
+                                                    .font(.subheadline)
+                                                Text(event.details)
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                }
                             }
                         }
                         .padding(.vertical, 4)
@@ -1329,17 +1383,22 @@ struct SyncDateRangeView: View {
 
     private func loadPreview() async {
         isLoadingPreview = true
+        // Ensure categories are loaded before computing filtered events
+        loadEnabledCategories()
         previewEvents = await calendarManager.fetchPreviewEvents(
             healthManager: healthKitManager,
             from: startDate,
             to: endDate
         )
         groupEventsByDate()
+        // Default to the last day with events
+        if let lastDay = sortedDaysWithEvents.last {
+            selectedPreviewDay = lastDay
+        }
         isLoadingPreview = false
     }
 
     private func groupEventsByDate() {
-        let calendar = Calendar.current
         let grouped = Dictionary(grouping: previewEvents) { event -> Date in
             calendar.startOfDay(for: event.startDate)
         }
@@ -1351,7 +1410,6 @@ struct SyncDateRangeView: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
 
-        let calendar = Calendar.current
         if calendar.isDateInToday(date) {
             return "Today"
         } else if calendar.isDateInYesterday(date) {
@@ -1397,12 +1455,65 @@ struct SyncDateRangeView: View {
 
     private var filteredGroupedEvents: [(date: Date, events: [CalendarEventPreview])] {
         let filtered = filteredPreviewEvents
-        let calendar = Calendar.current
         let grouped = Dictionary(grouping: filtered) { event -> Date in
             calendar.startOfDay(for: event.startDate)
         }
         return grouped.map { (date: $0.key, events: $0.value) }
             .sorted { $0.date > $1.date }
+    }
+
+    private var daysWithFilteredEvents: Set<Date> {
+        Set(filteredPreviewEvents.map { calendar.startOfDay(for: $0.startDate) })
+    }
+
+    // MARK: - Day Navigation
+
+    private var sortedDaysWithEvents: [Date] {
+        daysWithFilteredEvents.sorted()
+    }
+
+    private var eventsForSelectedDay: [CalendarEventPreview] {
+        guard let selectedDay = selectedPreviewDay else { return [] }
+        return filteredPreviewEvents.filter { event in
+            calendar.isDate(calendar.startOfDay(for: event.startDate), inSameDayAs: selectedDay)
+        }
+    }
+
+    private var canNavigatePrevious: Bool {
+        guard let selectedDay = selectedPreviewDay else { return false }
+        return sortedDaysWithEvents.first(where: { $0 < selectedDay }) != nil
+    }
+
+    private var canNavigateNext: Bool {
+        guard let selectedDay = selectedPreviewDay else { return false }
+        return sortedDaysWithEvents.first(where: { $0 > selectedDay }) != nil
+    }
+
+    private func navigateToPreviousDay() {
+        guard let selectedDay = selectedPreviewDay else { return }
+        if let previousDay = sortedDaysWithEvents.last(where: { $0 < selectedDay }) {
+            selectedPreviewDay = previousDay
+        }
+    }
+
+    private func navigateToNextDay() {
+        guard let selectedDay = selectedPreviewDay else { return }
+        if let nextDay = sortedDaysWithEvents.first(where: { $0 > selectedDay }) {
+            selectedPreviewDay = nextDay
+        }
+    }
+
+    private func dayHeaderString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            return formatter.string(from: date)
+        }
     }
 }
 
