@@ -1174,21 +1174,21 @@ struct SyncDateRangeView: View {
                 if let existingSync = calendarManager.isDateRangeSynced(from: startDate, to: endDate) {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("Already Synced", systemImage: "checkmark.circle.fill")
-                                .foregroundColor(.green)
+                            Label("Previously Synced", systemImage: "checkmark.circle")
+                                .foregroundColor(.secondary)
                                 .font(.headline)
 
                             Text("This date range was synced on \(formattedDate(existingSync.syncedAt))")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
 
-                            Text("\(existingSync.eventCount) events created")
+                            Text("Syncing again will skip existing events and only add new ones.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 4)
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Already synced. This date range was synced on \(formattedDate(existingSync.syncedAt)). \(existingSync.eventCount) events created.")
+                        .accessibilityLabel("Previously synced on \(formattedDate(existingSync.syncedAt)). Syncing again will skip existing events and only add new ones.")
                     }
                 }
 
@@ -1348,7 +1348,7 @@ struct SyncDateRangeView: View {
                             Spacer()
                         }
                     }
-                    .disabled(calendarManager.isSyncing || calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil || filteredPreviewEvents.isEmpty)
+                    .disabled(calendarManager.isSyncing || filteredPreviewEvents.isEmpty)
                     .accessibilityLabel(syncButtonAccessibilityLabel)
                     .accessibilityHint("Adds health events to your selected calendar")
                     .accessibilityIdentifier("addToCalendarButton")
@@ -1422,8 +1422,6 @@ struct SyncDateRangeView: View {
     private var syncButtonAccessibilityLabel: String {
         if calendarManager.isSyncing {
             return "Syncing health data to calendar"
-        } else if calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil {
-            return "Already synced, button disabled"
         } else if filteredPreviewEvents.isEmpty {
             return "No events to sync, button disabled"
         } else {

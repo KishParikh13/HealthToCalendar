@@ -158,15 +158,6 @@ class CalendarManager: ObservableObject {
     }
 
     func syncHealthDataToCalendar(healthManager: HealthKitManager, from startDate: Date, to endDate: Date, enabledCategories: Set<String>? = nil) async {
-        if let existingSync = isDateRangeSynced(from: startDate, to: endDate) {
-            await MainActor.run {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .short
-                syncStatus = "Date range already synced on \(formatter.string(from: existingSync.syncedAt))"
-            }
-            return
-        }
-
         PostHogSDK.shared.capture("calendar_sync_started", properties: [
             "start_date": ISO8601DateFormatter().string(from: startDate),
             "end_date": ISO8601DateFormatter().string(from: endDate),
@@ -185,6 +176,9 @@ class CalendarManager: ObservableObject {
         // Add 1 day to endDate to make it inclusive (HealthKit queries use exclusive end dates)
         let calendar = Calendar.current
         let adjustedEndDate = calendar.date(byAdding: .day, value: 1, to: endDate) ?? endDate
+
+        // Delete any existing synced events in this date range first
+        let eventsDeleted = deleteExistingSyncedEvents(from: startDate, to: adjustedEndDate)
 
         // Filter categories if enabledCategories is provided
         let categoriesToSync = enabledCategories != nil
@@ -217,13 +211,51 @@ class CalendarManager: ObservableObject {
             saveSyncHistory()
             updateSyncedEventCount()
             isSyncing = false
-            syncStatus = "Sync complete: \(eventsCreated) events created\(eventsFailed > 0 ? ", \(eventsFailed) failed" : "")"
+
+            if eventsCreated == 0 && eventsDeleted == 0 {
+                syncStatus = "No events to sync"
+            } else if eventsDeleted > 0 {
+                syncStatus = "Sync complete: \(eventsCreated) events (\(eventsDeleted) replaced)"
+            } else {
+                syncStatus = "Sync complete: \(eventsCreated) events created"
+            }
+            if eventsFailed > 0 {
+                syncStatus = (syncStatus ?? "") + ", \(eventsFailed) failed"
+            }
+
             PostHogSDK.shared.capture("calendar_sync_completed", properties: [
                 "events_created": eventsCreated,
+                "events_deleted": eventsDeleted,
                 "events_failed": eventsFailed,
                 "success": eventsFailed == 0
             ])
         }
+    }
+
+    func deleteExistingSyncedEvents(from startDate: Date, to endDate: Date) -> Int {
+        // Search all writable calendars to find events we created (in case calendar selection changed)
+        let calendarsToSearch = eventStore.calendars(for: .event).filter { $0.allowsContentModifications }
+        guard !calendarsToSearch.isEmpty else { return 0 }
+
+        let predicate = eventStore.predicateForEvents(
+            withStart: startDate,
+            end: endDate,
+            calendars: calendarsToSearch
+        )
+
+        let existingEvents = eventStore.events(matching: predicate)
+        var deletedCount = 0
+
+        for event in existingEvents where event.notes?.contains(healthSyncMarker) == true {
+            do {
+                try eventStore.remove(event, span: .thisEvent)
+                deletedCount += 1
+            } catch {
+                // Continue deleting others even if one fails
+            }
+        }
+
+        return deletedCount
     }
 
     func createCalendarEvent(for sample: HealthSample, category: HealthKitManager.HealthCategory) async throws -> String {
