@@ -497,33 +497,7 @@ struct ContentView: View {
                     .safeAreaInset(edge: .bottom) {
                         if !daysWithData.isEmpty {
                             let unsyncedCount = unsyncedDaysInRange.count
-                            if unsyncedCount > 0 {
-                                Button {
-                                    PostHogSDK.shared.capture("sync_sheet_opened", properties: [
-                                        "unsynced_days": unsyncedCount
-                                    ])
-                                    if let minDate = unsyncedDaysInRange.min(),
-                                       let maxDate = unsyncedDaysInRange.max() {
-                                        syncStartDate = minDate
-                                        syncEndDate = maxDate
-                                    }
-                                    showingSyncSheet = true
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "calendar.badge.plus")
-                                        Text("Sync \(unsyncedCount) Day\(unsyncedCount == 1 ? "" : "s")")
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(calendarManager.isSyncing)
-                                .padding(.horizontal)
-                                .padding(.bottom, 8)
-                                .accessibilityLabel("Sync \(unsyncedCount) day\(unsyncedCount == 1 ? "" : "s") to calendar")
-                                .accessibilityHint("Add health data events to your calendar")
-                                .accessibilityIdentifier("syncToCalendarButton")
-                            }
+                            syncButton(unsyncedCount: unsyncedCount)
                         }
                     }
                     .navigationTitle("Health to Calendar")
@@ -1027,6 +1001,44 @@ struct ContentView: View {
                 ])
             }
         }
+    }
+
+    @ViewBuilder
+    private func syncButton(unsyncedCount: Int) -> some View {
+        Button {
+            PostHogSDK.shared.capture("sync_sheet_opened", properties: [
+                "unsynced_days": unsyncedCount
+            ])
+            if unsyncedCount > 0,
+               let minDate = unsyncedDaysInRange.min(),
+               let maxDate = unsyncedDaysInRange.max() {
+                syncStartDate = minDate
+                syncEndDate = maxDate
+            } else {
+                // All synced - default to full range
+                syncStartDate = currentStartDate
+                syncEndDate = Calendar.current.date(byAdding: .day, value: -1, to: currentEndDate) ?? currentEndDate
+            }
+            showingSyncSheet = true
+        } label: {
+            HStack {
+                Image(systemName: "calendar.badge.plus")
+                if unsyncedCount > 0 {
+                    Text("Sync \(unsyncedCount) Day\(unsyncedCount == 1 ? "" : "s")")
+                } else {
+                    Text("Sync")
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+        }
+        .modifier(SyncButtonStyle(isProminent: unsyncedCount > 0))
+        .disabled(calendarManager.isSyncing)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+        .accessibilityLabel(unsyncedCount > 0 ? "Sync \(unsyncedCount) day\(unsyncedCount == 1 ? "" : "s") to calendar" : "Sync to calendar")
+        .accessibilityHint("Add health data events to your calendar")
+        .accessibilityIdentifier("syncToCalendarButton")
     }
 
     private func getMetricPriority(_ name: String) -> Int {
@@ -1572,6 +1584,23 @@ class AISummaryStorage {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return "ai_summary_period_\(formatter.string(from: startDate))_\(formatter.string(from: endDate))"
+    }
+}
+
+// MARK: - Sync Button Style
+
+struct SyncButtonStyle: ViewModifier {
+    let isProminent: Bool
+
+    func body(content: Content) -> some View {
+        if isProminent {
+            content
+                .buttonStyle(.borderedProminent)
+        } else {
+            content
+                .buttonStyle(.borderedProminent)
+                .tint(Color(.systemGray4))
+        }
     }
 }
 
