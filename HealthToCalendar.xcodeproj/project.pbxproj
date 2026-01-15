@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DEB1B56C2F184129003D3BA9 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = DE000001000000000000000B /* PostHog */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		DEB6AB272F14760B00F0D4DE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -65,6 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DEB1B56C2F184129003D3BA9 /* PostHog in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +130,7 @@
 			);
 			name = HealthToCalendar;
 			packageProductDependencies = (
+				DE000001000000000000000B /* PostHog */,
 			);
 			productName = HealthToCalendar;
 			productReference = DEB6AB122F14760A00F0D4DE /* HealthToCalendar.app */;
@@ -208,6 +214,9 @@
 			);
 			mainGroup = DEB6AB092F14760A00F0D4DE;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DE000001000000000000000A /* XCRemoteSwiftPackageReference "posthog-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DEB6AB132F14760A00F0D4DE /* Products */;
 			projectDirPath = "";
@@ -293,7 +302,7 @@
 				DEVELOPMENT_TEAM = GN3TH9WD6W;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
@@ -350,7 +359,7 @@
 				DEVELOPMENT_TEAM = GN3TH9WD6W;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
-				ENABLE_OUTGOING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
@@ -652,6 +661,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DE000001000000000000000A /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DE000001000000000000000B /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DE000001000000000000000A /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DEB6AB0A2F14760A00F0D4DE /* Project object */;
 }

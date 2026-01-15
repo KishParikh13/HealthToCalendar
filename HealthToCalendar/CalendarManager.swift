@@ -9,6 +9,7 @@ import Foundation
 import EventKit
 import HealthKit
 import Combine
+import PostHog
 
 struct SyncHistory: Codable, Identifiable {
     let id: UUID
@@ -133,13 +134,20 @@ class CalendarManager: ObservableObject {
                 isAuthorized = granted
                 if granted {
                     loadAvailableCalendars()
+                    PostHogSDK.shared.capture("calendar_authorization_granted", properties: [
+                        "calendars_count": availableCalendars.count
+                    ])
                 } else {
                     syncStatus = "Calendar access denied"
+                    PostHogSDK.shared.capture("calendar_authorization_denied")
                 }
             }
         } catch {
             await MainActor.run {
                 syncStatus = "Calendar access error: \(error.localizedDescription)"
+                PostHogSDK.shared.capture("calendar_authorization_failed", properties: [
+                    "error": error.localizedDescription
+                ])
             }
         }
     }
@@ -149,7 +157,7 @@ class CalendarManager: ObservableObject {
         selectedCalendar = eventStore.defaultCalendarForNewEvents
     }
 
-    func syncHealthDataToCalendar(healthManager: HealthKitManager, from startDate: Date, to endDate: Date) async {
+    func syncHealthDataToCalendar(healthManager: HealthKitManager, from startDate: Date, to endDate: Date, enabledCategories: Set<String>? = nil) async {
         if let existingSync = isDateRangeSynced(from: startDate, to: endDate) {
             await MainActor.run {
                 let formatter = DateFormatter()
@@ -158,6 +166,12 @@ class CalendarManager: ObservableObject {
             }
             return
         }
+
+        PostHogSDK.shared.capture("calendar_sync_started", properties: [
+            "start_date": ISO8601DateFormatter().string(from: startDate),
+            "end_date": ISO8601DateFormatter().string(from: endDate),
+            "categories_count": enabledCategories?.count ?? healthManager.healthCategories.count
+        ])
 
         await MainActor.run {
             isSyncing = true
@@ -172,7 +186,12 @@ class CalendarManager: ObservableObject {
         let calendar = Calendar.current
         let adjustedEndDate = calendar.date(byAdding: .day, value: 1, to: endDate) ?? endDate
 
-        for category in healthManager.healthCategories {
+        // Filter categories if enabledCategories is provided
+        let categoriesToSync = enabledCategories != nil
+            ? healthManager.healthCategories.filter { enabledCategories!.contains($0.name) }
+            : healthManager.healthCategories
+
+        for category in categoriesToSync {
             let samples = await healthManager.fetchDetailedSampleData(for: category, from: startDate, to: adjustedEndDate)
 
             for sample in samples {
@@ -199,6 +218,11 @@ class CalendarManager: ObservableObject {
             updateSyncedEventCount()
             isSyncing = false
             syncStatus = "Sync complete: \(eventsCreated) events created\(eventsFailed > 0 ? ", \(eventsFailed) failed" : "")"
+            PostHogSDK.shared.capture("calendar_sync_completed", properties: [
+                "events_created": eventsCreated,
+                "events_failed": eventsFailed,
+                "success": eventsFailed == 0
+            ])
         }
     }
 

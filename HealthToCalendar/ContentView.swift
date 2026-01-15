@@ -9,6 +9,7 @@ import SwiftUI
 import HealthKit
 import EventKit
 import FoundationModels
+import PostHog
 
 struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -187,6 +188,11 @@ struct ContentView: View {
                                 HStack(spacing: 16) {
                                     Button {
                                         timeRangeOffset -= 1
+                                        PostHogSDK.shared.capture("date_range_changed", properties: [
+                                            "range": selectedTimeRange.displayName,
+                                            "offset": timeRangeOffset,
+                                            "source": "nav_previous"
+                                        ])
                                     } label: {
                                         Image(systemName: "chevron.left")
                                             .font(.body)
@@ -198,6 +204,11 @@ struct ContentView: View {
 
                                     Button {
                                         timeRangeOffset += 1
+                                        PostHogSDK.shared.capture("date_range_changed", properties: [
+                                            "range": selectedTimeRange.displayName,
+                                            "offset": timeRangeOffset,
+                                            "source": "nav_next"
+                                        ])
                                     } label: {
                                         Image(systemName: "chevron.right")
                                             .font(.body)
@@ -410,6 +421,11 @@ struct ContentView: View {
                                         monthlyStats: selectedDate == nil ? monthlyCategoryStats[category.name] : dailyCategoryStats[category.name],
                                         isDisabled: selectedDate == nil && monthlyCategoryStats[category.name] == nil
                                     ) {
+                                        PostHogSDK.shared.capture("category_card_tapped", properties: [
+                                            "category": category.name,
+                                            "has_data": !category.sampleData.isEmpty,
+                                            "view_mode": selectedDate == nil ? "period" : "daily"
+                                        ])
                                         Task {
                                             await loadData(for: category)
                                             selectedCategory = category
@@ -460,6 +476,7 @@ struct ContentView: View {
                                     .accessibilityIdentifier("shareHealthDataButton")
 
                                     Button {
+                                        PostHogSDK.shared.capture("open_health_app")
                                         if let url = URL(string: "x-apple-health://") {
                                             UIApplication.shared.open(url)
                                         }
@@ -482,6 +499,9 @@ struct ContentView: View {
                             let unsyncedCount = unsyncedDaysInRange.count
                             if unsyncedCount > 0 {
                                 Button {
+                                    PostHogSDK.shared.capture("sync_sheet_opened", properties: [
+                                        "unsynced_days": unsyncedCount
+                                    ])
                                     if let minDate = unsyncedDaysInRange.min(),
                                        let maxDate = unsyncedDaysInRange.max() {
                                         syncStartDate = minDate
@@ -547,6 +567,10 @@ struct ContentView: View {
                     .onChange(of: selectedDate) { oldValue, newValue in
                         Task {
                             if let date = newValue {
+                                PostHogSDK.shared.capture("date_selected", properties: [
+                                    "date": ISO8601DateFormatter().string(from: date),
+                                    "is_synced": calendarManager.getSyncedDays().contains(date)
+                                ])
                                 // Load persisted summary for this date
                                 aiSummary = summaryStorage.getSummary(for: date)
                                 await loadDataForSelectedDate()
@@ -566,6 +590,11 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: selectedTimeRange) { oldValue, newValue in
+                        PostHogSDK.shared.capture("date_range_changed", properties: [
+                            "range": newValue.displayName,
+                            "offset": timeRangeOffset,
+                            "source": "menu"
+                        ])
                         // Reset selection-related state; offset is set when applying pendingTimeRange
                         selectedDate = nil
                         aiSummary = nil
@@ -579,6 +608,12 @@ struct ContentView: View {
                         }
                     }
                     .onChange(of: timeRangeOffset) { oldValue, newValue in
+                        PostHogSDK.shared.capture("date_range_changed", properties: [
+                            // Use current range and new offset
+                            "range": selectedTimeRange.displayName,
+                            "offset": newValue,
+                            "source": "offset_change"
+                        ])
                         selectedDate = nil
                         aiSummary = nil
                         Task { @MainActor in
@@ -729,6 +764,11 @@ struct ContentView: View {
     }
 
     private func shareHealthData(for date: Date) {
+        PostHogSDK.shared.capture("share_health_data", properties: [
+            "date": ISO8601DateFormatter().string(from: date),
+            "categories_count": filteredHealthCategories().count
+        ])
+
         // Prepare share data
         var shareText = "Health Data for \(formattedSelectedDate(date))\n\n"
 
@@ -760,6 +800,12 @@ struct ContentView: View {
             return
         }
 
+        PostHogSDK.shared.capture("ai_summary_started", properties: [
+            "type": "daily",
+            "force_regenerate": forceRegenerate,
+            "date": ISO8601DateFormatter().string(from: date)
+        ])
+
         isGeneratingAI = true
         defer { isGeneratingAI = false }
 
@@ -769,10 +815,19 @@ struct ContentView: View {
                 aiSummary = summary
                 // Persist the summary
                 summaryStorage.saveSummary(summary, for: date)
+                PostHogSDK.shared.capture("ai_summary_completed", properties: [
+                    "type": "daily",
+                    "success": true
+                ])
             }
         } catch {
             await MainActor.run {
                 aiSummary = "Unable to generate summary: \(error.localizedDescription)"
+                PostHogSDK.shared.capture("ai_summary_completed", properties: [
+                    "type": "daily",
+                    "success": false,
+                    "error": error.localizedDescription
+                ])
             }
         }
     }
@@ -887,14 +942,21 @@ struct ContentView: View {
             return
         }
 
-        // Check persisted storage
-        if !forceRegenerate, let existingSummary = summaryStorage.getMonthlySummary() {
+        // Check persisted storage (date-range aware)
+        if !forceRegenerate, let existingSummary = summaryStorage.getMonthlySummary(startDate: currentStartDate, endDate: currentEndDate) {
             await MainActor.run {
                 aiSummary = existingSummary
                 periodSummaryCache[cacheKey] = existingSummary
             }
             return
         }
+
+        PostHogSDK.shared.capture("ai_summary_started", properties: [
+            "type": "period",
+            "force_regenerate": forceRegenerate,
+            "time_range": selectedTimeRange.displayName,
+            "days_with_data": daysWithData.count
+        ])
 
         isGeneratingAI = true
         defer { isGeneratingAI = false }
@@ -937,18 +999,32 @@ struct ContentView: View {
                     aiSummary = trimmedResponse
                     // Save to session cache and persist
                     periodSummaryCache[cacheKey] = trimmedResponse
-                    summaryStorage.saveMonthlySummary(trimmedResponse)
+                    summaryStorage.saveMonthlySummary(trimmedResponse, startDate: currentStartDate, endDate: currentEndDate)
+                    PostHogSDK.shared.capture("ai_summary_completed", properties: [
+                        "type": "period",
+                        "success": true
+                    ])
                 } else {
                     // Fallback
                     let fallback = "You tracked \(summary.totalCategories) health metrics across \(summary.totalDaysWithData) days in the past two weeks. Keep up the great work!"
                     aiSummary = fallback
                     periodSummaryCache[cacheKey] = fallback
-                    summaryStorage.saveMonthlySummary(fallback)
+                    summaryStorage.saveMonthlySummary(fallback, startDate: currentStartDate, endDate: currentEndDate)
+                    PostHogSDK.shared.capture("ai_summary_completed", properties: [
+                        "type": "period",
+                        "success": true,
+                        "used_fallback": true
+                    ])
                 }
             }
         } catch {
             await MainActor.run {
                 aiSummary = "Unable to generate summary: \(error.localizedDescription)"
+                PostHogSDK.shared.capture("ai_summary_completed", properties: [
+                    "type": "period",
+                    "success": false,
+                    "error": error.localizedDescription
+                ])
             }
         }
     }
@@ -999,6 +1075,10 @@ struct SyncDateRangeView: View {
     @State private var previewEvents: [CalendarEventPreview] = []
     @State private var isLoadingPreview = false
     @State private var groupedEvents: [(date: Date, events: [CalendarEventPreview])] = []
+    @State private var enabledCategories: Set<String> = []
+    @State private var showCategoryPicker = false
+
+    private let enabledCategoriesKey = "enabledSyncCategories"
 
     var body: some View {
         NavigationStack {
@@ -1039,6 +1119,54 @@ struct SyncDateRangeView: View {
                     }
                 }
 
+                // Health Categories Section
+                Section {
+                    DisclosureGroup(isExpanded: $showCategoryPicker) {
+                        ForEach(healthKitManager.healthCategories, id: \.name) { category in
+                            let hasData = categoriesWithData.contains(category.name)
+                            Toggle(isOn: Binding(
+                                get: { hasData && enabledCategories.contains(category.name) },
+                                set: { isEnabled in
+                                    if isEnabled {
+                                        enabledCategories.insert(category.name)
+                                    } else {
+                                        enabledCategories.remove(category.name)
+                                    }
+                                    saveEnabledCategories()
+                                }
+                            )) {
+                                HStack(spacing: 8) {
+                                    Text(category.emoji)
+                                    Text(category.name)
+                                    if !hasData {
+                                        Spacer()
+                                        Text("No data")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .opacity(hasData ? 1.0 : 0.5)
+                            }
+                            .disabled(!hasData)
+                            .accessibilityLabel("\(category.name). \(hasData ? (enabledCategories.contains(category.name) ? "Enabled" : "Disabled") : "No data available")")
+                        }
+                    } label: {
+                        HStack {
+                            Text("Health Categories")
+                            Spacer()
+                            Text("\(enabledCategories.intersection(categoriesWithData).count) of \(categoriesWithData.count) selected")
+                                .foregroundColor(.secondary)
+                                .font(.subheadline)
+                        }
+                    }
+                    .accessibilityHint("Expand to choose which health data types to sync")
+                } header: {
+                    Text("Data to Sync")
+                        .accessibilityAddTraits(.isHeader)
+                } footer: {
+                    Text("Only categories with data in the selected date range can be synced.")
+                }
+
                 if let existingSync = calendarManager.isDateRangeSynced(from: startDate, to: endDate) {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
@@ -1074,13 +1202,13 @@ struct SyncDateRangeView: View {
                             .padding()
                             Spacer()
                         }
-                    } else if previewEvents.isEmpty {
+                    } else if filteredPreviewEvents.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "calendar.badge.exclamationmark")
                                 .font(.largeTitle)
                                 .foregroundColor(.orange)
                                 .accessibilityHidden(true)
-                            Text("No health data in this date range")
+                            Text(previewEvents.isEmpty ? "No health data in this date range" : "No categories selected")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
@@ -1088,13 +1216,13 @@ struct SyncDateRangeView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("No health data available in the selected date range")
+                        .accessibilityLabel(previewEvents.isEmpty ? "No health data available in the selected date range" : "No categories selected for sync")
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\(previewEvents.count) events will be added")
+                            Text("\(filteredPreviewEvents.count) events will be added")
                                 .font(.headline)
 
-                            ForEach(groupedEvents.prefix(3), id: \.date) { group in
+                            ForEach(filteredGroupedEvents.prefix(3), id: \.date) { group in
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(sectionHeaderString(for: group.date))
                                         .font(.subheadline)
@@ -1124,8 +1252,8 @@ struct SyncDateRangeView: View {
                                 }
                             }
 
-                            if groupedEvents.count > 3 {
-                                Text("+ \(groupedEvents.count - 3) more days")
+                            if filteredGroupedEvents.count > 3 {
+                                Text("+ \(filteredGroupedEvents.count - 3) more days")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -1146,7 +1274,8 @@ struct SyncDateRangeView: View {
                                 await calendarManager.syncHealthDataToCalendar(
                                     healthManager: healthKitManager,
                                     from: startDate,
-                                    to: endDate
+                                    to: endDate,
+                                    enabledCategories: enabledCategories
                                 )
                                 showingSyncAlert = true
                                 showingSyncSheet = false
@@ -1165,7 +1294,7 @@ struct SyncDateRangeView: View {
                             Spacer()
                         }
                     }
-                    .disabled(calendarManager.isSyncing || calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil || previewEvents.isEmpty)
+                    .disabled(calendarManager.isSyncing || calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil || filteredPreviewEvents.isEmpty)
                     .accessibilityLabel(syncButtonAccessibilityLabel)
                     .accessibilityHint("Adds health events to your selected calendar")
                     .accessibilityIdentifier("addToCalendarButton")
@@ -1184,6 +1313,9 @@ struct SyncDateRangeView: View {
             }
             .task(id: "\(startDate)-\(endDate)") {
                 await loadPreview()
+            }
+            .onAppear {
+                loadEnabledCategories()
             }
         }
     }
@@ -1234,11 +1366,43 @@ struct SyncDateRangeView: View {
             return "Syncing health data to calendar"
         } else if calendarManager.isDateRangeSynced(from: startDate, to: endDate) != nil {
             return "Already synced, button disabled"
-        } else if previewEvents.isEmpty {
+        } else if filteredPreviewEvents.isEmpty {
             return "No events to sync, button disabled"
         } else {
-            return "Add \(previewEvents.count) events to calendar"
+            return "Add \(filteredPreviewEvents.count) events to calendar"
         }
+    }
+
+    private func loadEnabledCategories() {
+        if let savedCategories = UserDefaults.standard.array(forKey: enabledCategoriesKey) as? [String] {
+            enabledCategories = Set(savedCategories)
+        } else {
+            // Default: all categories enabled
+            enabledCategories = Set(healthKitManager.healthCategories.map { $0.name })
+            saveEnabledCategories()
+        }
+    }
+
+    private func saveEnabledCategories() {
+        UserDefaults.standard.set(Array(enabledCategories), forKey: enabledCategoriesKey)
+    }
+
+    private var categoriesWithData: Set<String> {
+        Set(previewEvents.map { $0.categoryName })
+    }
+
+    private var filteredPreviewEvents: [CalendarEventPreview] {
+        previewEvents.filter { enabledCategories.contains($0.categoryName) }
+    }
+
+    private var filteredGroupedEvents: [(date: Date, events: [CalendarEventPreview])] {
+        let filtered = filteredPreviewEvents
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: filtered) { event -> Date in
+            calendar.startOfDay(for: event.startDate)
+        }
+        return grouped.map { (date: $0.key, events: $0.value) }
+            .sorted { $0.date > $1.date }
     }
 }
 
@@ -1249,8 +1413,6 @@ class AISummaryStorage {
 
     private let userDefaults = UserDefaults.standard
     private let dailySummaryPrefix = "ai_summary_daily_"
-    private let monthlySummaryKey = "ai_summary_monthly"
-    private let monthlySummaryDateKey = "ai_summary_monthly_date"
 
     private init() {}
 
@@ -1271,10 +1433,13 @@ class AISummaryStorage {
         return dailySummaryPrefix + formatter.string(from: date)
     }
 
-    // Monthly/Two-week summary - stored with a timestamp to invalidate when data changes significantly
-    func getMonthlySummary() -> String? {
+    // Period summary - keyed by date range to support different time periods
+    func getMonthlySummary(startDate: Date, endDate: Date) -> String? {
+        let key = periodSummaryKey(startDate: startDate, endDate: endDate)
+        let dateKey = key + "_date"
+
         // Check if summary was generated today (to keep it fresh daily)
-        guard let storedDate = userDefaults.object(forKey: monthlySummaryDateKey) as? Date else {
+        guard let storedDate = userDefaults.object(forKey: dateKey) as? Date else {
             return nil
         }
 
@@ -1284,12 +1449,20 @@ class AISummaryStorage {
             return nil
         }
 
-        return userDefaults.string(forKey: monthlySummaryKey)
+        return userDefaults.string(forKey: key)
     }
 
-    func saveMonthlySummary(_ summary: String) {
-        userDefaults.set(summary, forKey: monthlySummaryKey)
-        userDefaults.set(Date(), forKey: monthlySummaryDateKey)
+    func saveMonthlySummary(_ summary: String, startDate: Date, endDate: Date) {
+        let key = periodSummaryKey(startDate: startDate, endDate: endDate)
+        let dateKey = key + "_date"
+        userDefaults.set(summary, forKey: key)
+        userDefaults.set(Date(), forKey: dateKey)
+    }
+
+    private func periodSummaryKey(startDate: Date, endDate: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "ai_summary_period_\(formatter.string(from: startDate))_\(formatter.string(from: endDate))"
     }
 }
 

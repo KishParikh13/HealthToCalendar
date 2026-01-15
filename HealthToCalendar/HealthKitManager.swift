@@ -8,6 +8,7 @@
 import Foundation
 import HealthKit
 import Combine
+import PostHog
 
 class HealthKitManager: ObservableObject {
     let healthStore = HKHealthStore()
@@ -131,10 +132,16 @@ class HealthKitManager: ObservableObject {
                 isAuthorized = true
                 UserDefaults.standard.set(true, forKey: hasCompletedOnboardingKey)
                 setupHealthCategories()
+                PostHogSDK.shared.capture("health_authorization_granted", properties: [
+                    "categories_count": healthCategories.count
+                ])
             }
         } catch {
             await MainActor.run {
                 authorizationError = "Authorization failed: \(error.localizedDescription)"
+                PostHogSDK.shared.capture("health_authorization_failed", properties: [
+                    "error": error.localizedDescription
+                ])
             }
         }
     }
